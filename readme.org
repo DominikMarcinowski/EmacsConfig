@@ -1,0 +1,503 @@
+#+title: My emacs configuration
+#+author: Dominik Marcinowski
+
+This is my Emacs configuration file. My main goal is to make it as
+fast as possible while keeping it feature-full development
+environment.
+
+I mainly develop in C# inside Unity, C/C++, Html/Css/Js/Ts and shell
+scripts sometimes. Git is my preffered versioning system.
+
+*NOTE*:
+On Windows preferable fork of emacs is from [[https://github.com/kiennq/emacs-build][kinneq]]. It supports
+titlebar coloring and native compilation. It is not specifically fork
+but tools to build emacs with them but author kindli provides compiled
+packages.
+
+* TODO Stuff to yet be included in this config
+ - [ ] Magit support
+ - [ ] LSP support
+ - [ ] Code completion
+ - [ ] Improved org documents
+ - [ ] OrgRoam or Logseq intergration
+
+* Early init
+
+Early init is relatively new file which loads before init.el and even
+gui. It can be used to disable gui elements before they are even able
+to peek.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  ;;; early-init.el -*- lexical-binding: t; -*-
+#+end_src
+
+** Garbage collection
+
+Maximize garbage collection at startup. The GC eats up quite a bit of
+time, easily doubling startup time. The trick is to turn up the memory
+threshold as early as possible.
+
+Then after emacs is started restore these variables to reasonable
+sizes, becouse not doing so may cause some rendering issues and
+slowdowns.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (setq gc-cons-threshold most-positive-fixnum) ; 2^61 bytes
+  (setq gc-cons-percentage 0.6)
+
+  (defun dm/hook--after-startup-gc nil
+    "Hook function which optimizes garbage collection after emacs initializes."
+    (defvar dm/gc-cons-threshold 134217728) ; 128mb
+
+    ;; Lower the garbage collection values.
+    (setq gc-cons-threshold dm/gc-cons-threshold)
+    (setq gc-cons-percentage 0.1)
+
+    ;; Collect garbage after focus has changed.
+    (if (boundp 'after-focus-change-function)
+	(add-function :after after-focus-change-function
+		      (lambda ()
+			(unless (frame-focus-state)
+			  (garbage-collect))))
+      (add-hook 'after-focus-change-function #'garbage-collect))
+
+    ;; Collect garbage in minibuffer.
+    (defun gc-minibuffer-setup-hook nil
+      (setq gc-cons-threshold (* dm/gc-cons-threshold 2)))
+    (defun gc-minibuffer-exit-hook nil
+      (garbage-collect)
+      (setq gc-cons-threshold dm/gc-cons-threshold))
+    (add-hook 'minibuffer-setup-hook #'gc-minibuffer-setup-hook)
+    (add-hook 'minibuffer-exit-hook #'gc-minibuffer-exit-hook))
+
+  (add-hook 'emacs-startup-hook #'dm/hook--after-startup-gc)
+#+end_src
+
+** File name alist
+
+Disable checking for file handler at startup. Every file opened and
+loaded by Emacs will run through this list to check for a proper
+handler for the file, but during startup, it won't need any of
+them.
+
+Disabling it and reenabling it after startup makes small
+diffrence but anything matters.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (defvar default-file-name-handler-alist file-name-handler-alist)
+  (setq file-name-handler-alist nil)
+
+  (defun dm/hook--after-startup-file-name-alist nil
+    (setq file-name-handler-alist default-file-name-handler-alist)
+    (makunbound 'default-file-name-handler-alist))
+
+  (add-hook 'emacs-startup-hook #'dm/hook--after-startup-file-name-alist)
+#+end_src
+
+** Setup gui
+
+Disable gui specific modes and variables so they don't have a chance
+to peek. Also set default frame parameters.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (setq inhibit-startup-message t)
+  (setq use-file-dialog nil)
+  (setq inhibit-compacting-font-caches t)
+
+  (menu-bar-mode -1)
+  (tool-bar-mode -1)
+  (scroll-bar-mode -1)
+
+  (add-to-list 'default-frame-alist '(fullscreen . maximized))
+  (add-to-list 'default-frame-alist '(alpha . (100 . 100)))
+  (add-to-list 'default-frame-alist '(width . 200))
+  (add-to-list 'default-frame-alist '(height . 50))
+#+end_src
+
+** Packages
+
+Disable loading any packages. Since I do it myself with =straight.el=,
+the default ones would slow down and possibly conflict with straight's
+packages.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (setq package-enable-at-startup nil)
+#+end_src
+
+** Native comp
+
+Change default =eln-cache= directory.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (when (boundp 'native-comp-eln-load-path)
+    (startup-redirect-eln-cache
+     (expand-file-name "var/eln-cache/" user-emacs-directory)))
+#+end_src
+
+Silence nativecomp warnings becouse they can be quite obnouctius.
+Also set some settings for nativecomp.
+
+#+begin_src emacs-lisp :tangle early-init.el
+  (setq native-comp-async-report-warnings-errors nil)
+
+  (setq native-comp-speed 2)
+  (setq native-comp-deferred-compilation t)
+#+end_src
+
+* Bootstrap =straight.el=
+
+I'm using =straight.el= for managing my packages. Main reason is that
+straight loads only packages which i specify and not like
+=package.el=, which loads everything if is installed. This speeds up
+boot times drastically.
+
+Straight also allows me to pin packages to specific commits which is
+usefull if package breaks at some point.
+
+#+begin_src emacs-lisp :tangle init.el
+  ;;; init.el -*- lexical-binding: t; -*-
+
+  (setq straight-base-dir (expand-file-name "var/" user-emacs-directory))
+  (defvar bootstrap-version)
+  (let ((bootstrap-file
+	 (expand-file-name "straight/repos/straight.el/bootstrap.el" straight-base-dir))
+	(bootstrap-version 5))
+    (unless (file-exists-p bootstrap-file)
+      (with-current-buffer
+	  (url-retrieve-synchronously
+	   "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+	   'silent 'inhibit-cookies)
+	(goto-char (point-max))
+	(eval-print-last-sexp)))
+    (load bootstrap-file nil 'nomessage))
+
+  ;; (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory)
+#+end_src
+
+** Setup =setup.el=
+
+=setup.el= is similar to =use-package= but is more light-weight and
+easly customizable with custom "commands".
+
+#+begin_src emacs-lisp :tangle init.el
+  (straight-use-package '(setup :type git :host nil :repo "https://git.sr.ht/~pkal/setup"))
+  (require 'setup)
+
+  (defun dm/filter-straight-recipe (recipe)
+    (let* ((plist (cdr recipe))
+	   (name (plist-get plist :straight)))
+      (cons (if (and name (not (equal name t)))
+		name
+	      (car recipe))
+	    (plist-put plist :straight nil))))
+
+  (setup-define :pkg
+    (lambda (&rest recipe)
+      `(straight-use-package ',(dm/filter-straight-recipe recipe)))
+    :documentation "Install RECIPE via straight.el"
+    :shorthand #'cadr)
+#+end_src
+
+** Keep =.emacs.d= directory clean
+
+=no-littering= is package exacly for that reason. It sets variables
+for diffrent files ad folders to be =etc/= or =var/= based.
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg no-littering)
+    (setq create-lockfiles nil)
+    (setq make-backup-files nil)
+    (setq auto-save-default nil)
+    (setq auto-save-file-name-transforms `((".*" ,(no-littering-expand-var-file-name "auto-save/") t)))
+    (setq server-auth-dir (no-littering-expand-var-file-name "server/")))
+#+end_src
+
+* Setup built-in packages
+
+** Emacs
+
+#+begin_src emacs-lisp :tangle init.el
+      (setup emacs
+	;; My Information
+	(setq user-full-name "Dominik Marcinowski")
+	(setq user-mail-address "dmarcinowski@zoho.com")
+	;; Clock settings
+	(setq display-time-24hr-format t)
+	(setq display-time-load-average -1)
+	;; Autorevert settings
+	(setq auto-revert-verbose nil)
+	(setq auto-revert-use-notify nil)
+	(setq auto-revert-interval 3)
+	(setq global-auto-revert-non-file-buffers t)
+	;; Other settins
+	(setq custom-file (make-temp-file ""))
+	(setq bite-compile-warnings '(not free-vars unresolved noroutine lexical make-local))
+	(setq large-file-warning-threshold nil)
+	(setq vc-follow-symlinks t)
+	(setq ad-redefinition-action 'accept)
+	(setq load-prefer-newer t)
+	(setq mouse-wheel-progressive-speed nil)
+	(setq fast-but-imprecise-scrolling nil)
+	(setq custom-safe-themes t)
+	(setq enable-local-variables :all)
+	(setq jit-lock-defer-time 0)
+	(setq read-extended-command-predicate #'command-completion-default-include-p)
+	(:global "<escape>" 'keyboard-escape-quit
+		 "C-=" 'text-scale-increase
+		 "C-+" 'text-scale-increase
+		 "C--" 'text-scale-decrease)
+	(defalias 'yes-or-no-p 'y-or-n-p)
+	(add-hook 'after-init-hook #'electric-pair-mode)
+	(add-hook 'after-init-hook #'electric-layout-mode)
+	(add-hook 'after-init-hook #'global-auto-revert-mode)
+	(add-hook 'after-init-hook #'global-subword-mode)
+	(add-hook 'after-init-hook #'column-number-mode)
+	(add-hook 'after-init-hook #'save-place-mode))
+#+end_src
+
+** Recentf
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup recentf
+    (setq recentf-max-saved-items 2048)
+    (setq recentf-exclude '("/tmp/" "/ssh:" "/sudo:"
+			    "/.emacs.d/etc/*" "/.emacs.d/var/*"
+			    "/agenda/*" "/roam/*"
+			    "recentf$"
+			    "\\.mkv$" "\\.mp[34]$" "\\.avi$" "\\.pdf$" "\\.docx?$" "\\.xlsx?$"
+			    "\\.sub$" "\\.srt$" "\\.ass$"))
+    (run-at-time nil (* 5 60) #'recentf-save-list)
+    (add-hook 'after-init-hook #'recentf-mode))
+#+end_src
+
+** Dired
+
+#+begin_src emacs-lisp :tangle init.el
+(setup dired
+  (setq dired-listing-switches "-lah --group-directories-first"
+	dired-recursive-copies 'always
+	dired-recursive-deletes 'always
+	dired-dwim-target t
+	delete-by-moving-to-trash t))
+#+end_src
+
+** Fonts
+
+#+begin_src emacs-lisp :tangle init.el
+  (setq dm/font-monospace "Cascadia Code")
+  (setq dm/font-variable "Segoe UI")
+#+end_src
+
+* Let's be Evil
+
+I used vim for far too long and not having vim bindings is just
+painful.
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg undo-tree))
+  (setup (:pkg evil-collection))
+  (setup (:pkg evil-commentary))
+
+  (setup (:pkg evil)
+    (setq undo-tree-auto-save-history t
+	  evil-undo-system 'undo-tree)
+    (setq evil-want-C-u-scroll t
+	  evil-want-C-d-scroll t
+	  evil-want-C-i-jump nil
+	  evil-want-integration t
+	  evil-want-keybinding nil
+	  evil-split-window-below t
+	  evil-split-window-right t
+	  evil-respect-visual-line-mode 1)
+    (setq evil-collection-outline-bind-tab-p t)
+
+    (evil-mode)
+    (global-undo-tree-mode)
+    (evil-collection-init)
+    (evil-commentary-mode)
+    (setq evil-want-keybinding t))
+#+end_src
+
+** General binings
+
+General is a package to configure leader like bindings with ease.
+I use =SPC= and =C-SPC= for my leader key.
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg general)
+    (general-evil-setup)
+    (general-create-definer dm/general-leader
+      :states '(normal insert visual emacs)
+      :keymaps 'override
+      :prefix "SPC"
+      :global-prefix "C-SPC")
+    (dm/general-leader
+      "C-SPC" #'(execute-extended-command :wk "command")
+      "SPC"   #'(execute-extended-command :wk "command")
+      "."     #'(find-file :wk "find file")
+      "h"     #'(:keymap help-map t :wk "help")
+      "u"     #'(universal-argument :wk "universal prefix")
+      "q"     #'(evil-quit :wk "quit")
+      "Q"     #'(evil-quit-all :wk "quit all")
+      "f"     #'(:ignore t :wk "file")
+      "ff"    #'(find-file :wk "find file")
+      "fd"    #'(dired-at-point :wk "dired at file")
+      "fs"    #'(save-buffer :wk "save file")
+      "fc"    #'(find-file "~/.emacs.d/" :wk "config")
+      "b"     #'(:ignore t :wk "buffer")
+      "bi"    #'(ibuffer-jump :wk "ibuffer")
+      "bb"    #'(switch-to-buffer :wk "switch buffer")
+      "bk"    #'(kill-this-buffer :wk "kill this buffer")
+      "br"    #'(revert-buffer :wk "reload buffer")
+      "c"     #'(:ignore t :wk "code")
+      "s"     #'(:ignore t :wk "search")))
+#+end_src
+
+** Which-key to use
+
+Which key is nice gui for displaying possible bindings so I don't have
+to blindly type them. I'm just a human, I don't remember them all.
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg which-key)
+    (setq which-key-idle-delay 0.3)
+    (which-key-mode))
+#+end_src
+
+* Darhboard
+
+Dashboard is naice landing buffer to select recent files, projects, etc.
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg dashboard)
+    (setq dashboard-center-content t
+	  dashboard-startup-banner (no-littering-expand-etc-file-name "dashboard/logo.png")
+	  ;; dashboard-items '((projects . 10)
+	  ;; 		  (recents  . 5)
+	  ;; 		  (agenda   . 5))
+	  dashboard-banner-logo-title nil
+	  dashboard-set-footer nil
+	  dashboard-set-file-icons t
+	  dashboard-set-heading-icons t
+	  dashboard-set-navigator t
+	  dashboard-week-agenda t
+	  dashboard-filter-agenda-entry 'dashboard-filter-agenda-by-todo
+	  initial-buffer-choice (lambda () (get-buffer dashboard-buffer-name)))
+    (dashboard-setup-startup-hook)
+    (dashboard-modify-heading-icons '((recents . "file-text")
+				      (bookmarks . "book"))))
+#+end_src
+
+* Theme
+
+#+begin_src emacs-lisp :tangle init.el
+  ;; (setup (:pkg solaire-mode))
+  (setup (:pkg rainbow-mode))
+  (setup (:pkg rainbow-delimiters))
+  (setup (:pkg hl-todo))
+  (setup (:pkg all-the-icons))
+  (setup (:pkg all-the-icons-dired))
+  (setup (:pkg all-the-icons-ibuffer))
+  (setup (:pkg all-the-icons-completion))
+  ;; (setup (:pkg twilight-bright-theme))
+
+  (setup (:pkg doom-themes)
+    (setq doom-themes-enable-bold t)
+    (setq doom-themes-enable-italic t)
+    (doom-themes-visual-bell-config)
+    (doom-themes-org-config))
+
+  (setup (:pkg doom-modeline)
+    (setq doom-modeline-height 28)
+    (setq doom-modeline-bar-width 6)
+    (setq doom-modeline-hud nil)
+    (setq doom-modeline-major-mode-icon t)
+    (setq doom-modeline-buffer-modification-icon t)
+    (setq doom-modeline-buffer-state-icon t)
+    (setq doom-modeline-indent-info t)
+    (setq doom-modeline-minor-modes nil)
+    (setq doom-modeline-buffer-file-name-style 'truncate-except-project)
+    (add-hook 'after-init-hook #'size-indication-mode)
+    (add-hook 'after-init-hook #'display-time-mode))
+
+  (defun dm/setup--font-faces nil
+    "Sets basic font faces."
+    (set-face-attribute 'default nil :font (font-spec :family dm/font-monospace :size 14 :weight 'regular))
+    (set-face-attribute 'fixed-pitch nil :font (font-spec :family dm/font-monospace :size 14 :weight 'regular))
+    (set-face-attribute 'variable-pitch nil :font (font-spec :family dm/font-variable :size 14 :weight 'regular))
+    (set-fontset-font t 'unicode dm/font-monospace))
+
+  (defun dm/setup--utf8-encoding nil
+    "Sets UTF-8 encoding everywhere."
+    (prefer-coding-system 'utf-8)
+    (set-default-coding-systems 'utf-8)
+    (set-terminal-coding-system 'utf-8)
+    (set-keyboard-coding-system 'utf-8)
+    (set-selection-coding-system 'utf-8)
+    (set-file-name-coding-system 'utf-8)
+    (set-clipboard-coding-system 'utf-8)
+    (set-buffer-file-coding-system 'utf-8)
+    (setq locale-coding-system 'utf-8)
+    (setq coding-system-for-read 'utf-8)
+    (setq coding-system-for-write 'utf-8)
+    (setq default-process-coding-system '(utf-8-unix . utf-8-unix)))
+
+  (defun dm/setup-fonts nil
+    (dm/setup--font-faces)
+    (dm/setup--utf8-encoding))
+
+  (defun dm/set-theme (&optional dark-theme)
+    "Set theme depending on system preferences."
+    (interactive)
+    ;; (load-theme 'modus-vivendi t)
+    (or dark-theme (setq dark-theme nil))
+    (if (or (= (w32-read-registry 'HKCU "Software/Microsoft/Windows/CurrentVersion/Themes/Personalize" "AppsUseLightTheme") 0)
+	    dark-theme)
+	(load-theme 'doom-one t)
+      (load-theme 'doom-one-light t))
+    (dm/setup-fonts))
+
+  (defun dm/setup-theme nil
+    (doom-modeline-mode)
+    (global-hl-todo-mode)
+    ;; (solaire-global-mode 1)
+    (all-the-icons-ibuffer-mode 1)
+    (all-the-icons-completion-mode 1)
+    (dm/set-theme))
+
+  (defun dm/setup-file-theme nil
+    (rainbow-mode 1)
+    (rainbow-delimiters-mode 1)
+    (hl-todo-mode 1)
+    (display-line-numbers-mode 1))
+
+  (add-hook 'after-init-hook #'dm/setup-theme)
+  (add-hook 'server-after-make-frame-hook #'dm/setup-theme)
+  (add-hook 'prog-mode-hook #'dm/setup-file-theme)
+  (add-hook 'text-mode-hook #'dm/setup-file-theme)
+  (add-hook 'conf-mode-hook #'dm/setup-file-theme)
+  (add-hook 'dired-mode-hook #'all-the-icons-dired-mode)
+#+end_src
+
+* Completion
+
+#+begin_src emacs-lisp :tangle init.el
+  (setup (:pkg vertico)
+    (setq vertico-cycle t)
+    (setq vertico-resize nil)
+    (setq vertico-sort-function 'vertico-sort-history-alpha)
+    (setq vertico-count-format '("%-6s " . "(%s/%s)"))
+    (setq vertico-count 15)
+    (add-hook 'after-init-hook #'vertico-mode))
+
+  (setup (:pkg save-history)
+    (add-hook 'vertico-mode-hook #'savehist-mode))
+
+  (setup (:pkg marginalia)
+    (add-hook 'vertico-mode-hook #'marginalia-mode))
+
+  (setup (:pkg orderless)
+    (setq completion-styles '(orderless))
+    (setq completion-category-defaults nil)
+    (setq completion-category-overrides '((file) (styles partial-completion))))
+#+end_src
