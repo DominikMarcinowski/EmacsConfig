@@ -11,7 +11,7 @@ scripts sometimes. Git is my preffered versioning system.
 *NOTE*:
 On Windows preferable fork of emacs is from [[https://github.com/kiennq/emacs-build][kinneq]]. It supports
 titlebar coloring and native compilation. It is not specifically fork
-but tools to build emacs with them but author kindli provides compiled
+but tools to build emacs with them but author kindly provides compiled
 packages.
 
 * TODO Stuff to yet be included in this config
