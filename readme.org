@@ -433,14 +433,21 @@ Dashboard is naice landing buffer to select recent files, projects, etc.
     (set-default-coding-systems 'utf-8)
     (set-terminal-coding-system 'utf-8)
     (set-keyboard-coding-system 'utf-8)
-    (set-selection-coding-system 'utf-8)
     (set-file-name-coding-system 'utf-8)
-    (set-clipboard-coding-system 'utf-8)
     (set-buffer-file-coding-system 'utf-8)
+    (if (eq system-type 'windows-nt)
+	(progn
+	  (set-clipboard-coding-system 'utf-16-le)
+	  (set-selection-coding-system 'utf-16-le))
+      (progn
+	(set-clipboard-coding-system 'utf-8)
+	(set-selection-coding-system 'utf-8)))
     (setq locale-coding-system 'utf-8)
     (setq coding-system-for-read 'utf-8)
     (setq coding-system-for-write 'utf-8)
-    (setq default-process-coding-system '(utf-8-unix . utf-8-unix)))
+    (setq default-process-coding-system '(utf-8-unix . utf-8-unix))
+    (when (display-graphic-p)
+      (setq x-select-request-type '(UTF8_STRING COMPOUND_TEXT TEXT STRING))))
 
   (defun dm/setup-fonts nil
     (dm/setup--font-faces)
@@ -500,4 +507,21 @@ Dashboard is naice landing buffer to select recent files, projects, etc.
     (setq completion-styles '(orderless basic))
     (setq completion-category-defaults nil)
     (setq completion-category-overrides '((file (styles partial-completion)))))
+#+end_src
+
+* Languages
+
+Here Is setup languages I use.
+
+#+begin_src emacs-lisp
+  (setup (:pkg ahk-mode))
+  (setup (:pkg yaml-mode))
+  (setup (:pkg markdown-mode))
+  (setup (:pkg csharp-mode))
+#+end_src
+
+** Version control
+
+#+begin_src emacs-lisp
+  (setup (:pkg magit))
 #+end_src

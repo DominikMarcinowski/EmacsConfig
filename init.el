@@ -213,14 +213,21 @@
   (set-default-coding-systems 'utf-8)
   (set-terminal-coding-system 'utf-8)
   (set-keyboard-coding-system 'utf-8)
-  (set-selection-coding-system 'utf-8)
   (set-file-name-coding-system 'utf-8)
-  (set-clipboard-coding-system 'utf-8)
   (set-buffer-file-coding-system 'utf-8)
+  (if (eq system-type 'windows-nt)
+      (progn
+	(set-clipboard-coding-system 'utf-16-le)
+	(set-selection-coding-system 'utf-16-le))
+    (progn
+      (set-clipboard-coding-system 'utf-8)
+      (set-selection-coding-system 'utf-8)))
   (setq locale-coding-system 'utf-8)
   (setq coding-system-for-read 'utf-8)
   (setq coding-system-for-write 'utf-8)
-  (setq default-process-coding-system '(utf-8-unix . utf-8-unix)))
+  (setq default-process-coding-system '(utf-8-unix . utf-8-unix))
+  (when (display-graphic-p)
+    (setq x-select-request-type '(UTF8_STRING COMPOUND_TEXT TEXT STRING))))
 
 (defun dm/setup-fonts nil
   (dm/setup--font-faces)
