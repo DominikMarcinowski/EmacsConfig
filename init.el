@@ -37,8 +37,8 @@
   (setq create-lockfiles nil)
   (setq make-backup-files nil)
   (setq auto-save-default nil)
-  (setq auto-save-file-name-transforms `((".*" ,(no-littering-expand-var-file-name "auto-save/") t)))
-  (setq server-auth-dir (no-littering-expand-var-file-name "server/")))
+  (setq auto-save-file-name-transforms `((".*" ,(no-littering-expand-var-file-name "auto-save/") t))))
+  ;; (setq server-auth-dir (no-littering-expand-var-file-name "server/")))
 
 (setup emacs
   ;; My Information
@@ -273,6 +273,6 @@
   (add-hook 'vertico-mode-hook #'marginalia-mode))
 
 (setup (:pkg orderless)
-  (setq completion-styles '(orderless))
+  (setq completion-styles '(orderless basic))
   (setq completion-category-defaults nil)
-  (setq completion-category-overrides '((file) (styles partial-completion))))
+  (setq completion-category-overrides '((file (styles partial-completion)))))
