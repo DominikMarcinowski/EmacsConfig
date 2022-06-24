@@ -1,5 +1,6 @@
 #+title: My emacs configuration
 #+author: Dominik Marcinowski
+#+auto_tangle: t
 
 This is my Emacs configuration file. My main goal is to make it as
 fast as possible while keeping it feature-full development
@@ -524,4 +525,11 @@ Here Is setup languages I use.
 
 #+begin_src emacs-lisp
   (setup (:pkg magit))
+#+end_src
+
+* Org mode
+
+#+begin_src emacs-lisp
+  (setup (:pkg (org-auto-tangle :type git :host nil :repo "https://github.com/yilkalargaw/org-auto-tangle"))
+    (add-hook 'org-mode-hook 'org-auto-tangle-mode))
 #+end_src
